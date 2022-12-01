@@ -1,0 +1,143 @@
+MODULE Bus(b_in_L1_ad, b_in_L1_dt, b_in_L1_ctrl, b_in_mem_ad, b_in_mem_dt, b_in_mem_ctrl)
+VAR 
+    valid: boolean
+ASSIGN
+    init() :=
+    next() := 
+
+--END Bus
+--*****************************************************************************
+
+MODULE Arbitre(req_L1)
+VAR 
+    arb_gnt: {none, mem, cache}
+ASSIGN
+    init(arb_gnt) := none -- personne au depart
+    next(arb_gnt) :=
+        case 
+            req_L1 == TRUE & arb_gnt == none : cache
+            req_L1 == TRUE & arb_gnt == cache : mem
+            req_L1 == TRUE & arb_gnt == mem : mem
+            TRUE : none
+        esac
+        
+
+--END Arbitre
+--*****************************************************************************
+
+MODULE Cache(arb_gnt, b_out_ad, b_out_dt, b_out_ctrl, cpu_ad, cpu_dt, cpu_ctrl)
+VAR
+    ad: {none, 0, 1}
+    dt: {null, 0, 1}
+    req_ad: {0, 1}
+    req_dt: {0, 1}
+    req_ctrl: {rd, wr}
+    req_L1: boolean
+    CPU: Cpu()
+ASSIGN
+    init(ad) := vide 
+    init(dt) := null 
+    next() := 
+
+--END Cache
+--*****************************************************************************
+
+MODULE Mem(arb_gnt, b_out_ad, b_out_dt, b_out_ctrl)
+VAR 
+    -- data[0] = valeur à l'adresse 0
+    -- data[1] = valeur à l'adresse 1
+    data: array 0..1 = {null, 0, 1} 
+    ack_ad: {none, 0, 1}
+    ack_dt: {null, 0, 1}
+    ack_ctrl: {none, 0, 1}
+ASSIGN
+    init(data[0]) := null
+    init(data[1]) := null
+    init(ack_ad) := none
+    init(ack_dt) := null
+    init(ack_ctrl) := none
+
+    next(data[0]) := 
+        case 
+            b_out_ctrl == wr & b_out_ad == 0 : b_out_dt -- mise a jour pour une ecriture
+            TRUE : data[0] -- rien a faire pour un read
+        esac
+    next(data[1]) := 
+        case 
+            b_out_ctrl == wr & b_out_ad == 1 : b_out_dt -- mise a jour pour une ecriture
+            TRUE : data[1] -- rien a faire pour un read
+        esac
+    next(ack_ad) := 
+        case 
+            arb_gnt != mem : none
+            b_out_ad != none : b_out_ad
+            TRUE : none
+        esac
+    next(ack_dt) :=
+        case
+            arb_gnt != mem : null
+            b_out_ctrl == rd & b_out_ad == 0 : data[0]
+            b_out_ctrl == rd & b_out_ad == 1 : data[1]
+            TRUE : null
+        esac
+    next(ack_ctrl) :=
+        case
+            arb_gnt != mem : none
+            b_out_ctrl != none : b_out_ctrl
+            TRUE : none
+        esac
+
+--END Mem
+--*****************************************************************************
+
+MODULE Cpu(freeze, ack_ad, ack_dt, ack_ctrl)
+VAR 
+    R1: {null, 0, 1}
+    R2: {null, 0, 1}
+    R3: {null, 0, 1}
+    freeze: boolean
+ASSIGN
+    init() :=
+    next(R1) :=
+         
+
+--END Cpu
+--*****************************************************************************
+
+MODULE main
+VAR 
+    B_AD: {none, 0, 1}
+    B_DT: {null, 0, 1}
+    B_CTRL: {none, rd, wr} 
+    VALID: boolean
+    CACHE: Cache(B_ARB_GNT, )
+    MEM: Mem(B_AD, B_DT, B_CTRL)
+    ARB: Arbitre(CACHE.req_L1)
+ASSIGN
+    init()
+    next(B_AD) : 
+        case
+            ARB.arb_gnt == cache : CACHE.req_ad
+            ARB.arb_gnt == mem : MEM.ack_ad
+            TRUE : none
+        esac
+    next(B_DT) : 
+        case
+            ARB.arb_gnt == cache : CACHE.req_dt
+            ARB.arb_gnt == mem : MEM.ack_dt
+            TRUE : none
+        esac
+    next(B_CTRL) : 
+        case
+            ARB.arb_gnt == cache : CACHE.req_ctrl
+            ARB.arb_gnt == mem : MEM.ack_ctrl
+            TRUE : none
+        esac
+    next(VALID) : 
+        case 
+            ARB.arb_gnt == mem & MEM.ack_ad == none : 
+
+    
+    
+--END main
+--*****************************************************************************
