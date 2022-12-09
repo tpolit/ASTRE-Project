@@ -173,38 +173,55 @@ ASSIGN
 MODULE Cpu(ack_ad, ack_dt, ack_ctrl)
 VAR 
     
-    registres : array 0..2 of {null,0,1};
-    state : {idle, freeze, busy};
+    registre : {null, 0 ,1};
+    state : {idle, freeze};
     req_l1_ad : {none,0,1};
     req_l1_dt : {null,0,1};
     req_l1_ctrl : {none,rd,wr};
+
 ASSIGN
 
-    init(registres) := null;
+    init(registre) := null;
     init(state) := idle;
     init(req_l1_ad) := none;
     init(req_l1_ctrl) := none;
     init(req_l1_dt ) := null;
+
+
+    next(registre) :=
+        case
+            ack_ctrl = rd : ack_dt;
+        esac;
 
     next(state) :=
         case 
             ack_ctrl = freeze : freeze;
             TRUE : idle;
         esac;
+    
+    next(req_l1_ctrl) := 
+        case 
+            state = freeze : req_l1_ctrl ;
+            TRUE : none;
+        esac;
 
-
+    next(req_l1_ad) := 
+        case 
+            req_l1_ctrl != none : {0,1}; 
+            TRUE : none;
+        esac;
+    
+    next(req_l1_dt) :=
+        case 
+            req_l1_ctrl = wr : {0,1};
+            TRUE : none;
+        esac;
 
 
 --END Cpu
 --*****************************************************************************
 
-MODULE Node(bus_ad,bus_dt,bus_ctrl,arb_gnt)
-VAR
-    c : Cache(arb_gnt, bus_ad, bus_dt, bus_ctrl, p.req_l1_ad, p.req_l1_dt, p1.req_l1_ctrl);
-    p : Cpu(c.ack_ad, c.ack_dt, c.ack_ctrl);    
 
-
-ASSIGN
 
 
 --END NODE
@@ -215,10 +232,10 @@ VAR
     B_AD: {none, 0, 1};
     B_DT: {null, 0, 1};
     B_CTRL: {none, rd, wr} ;
-    node : Node(B_AD,B_DT,B_CTRL,ARB.arb_gnt);
+    c : Cache(arb_gnt, bus_ad, bus_dt, bus_ctrl, p.req_l1_ad, p.req_l1_dt, p1.req_l1_ctrl);
+    p : Cpu(c.ack_ad, c.ack_dt, c.ack_ctrl);    
     MEM: Mem(B_AD, B_DT, B_CTRL);
     ARB: Arbitre(CACHE.req_L1);
-    VALID: boolean;
 
 ASSIGN
     next(B_AD) := 
@@ -239,10 +256,6 @@ ASSIGN
             ARB.arb_gnt = mem : MEM.ack_ctrl;
             TRUE : none;
         esac;
-    next(VALID) :=
-        case 
-            ARB.arb_gnt = cache & B_AD!= none  & B_DT != null: TRUE;
-            ARB.arb_gnt = mem & MEM.ack_ad = none ;
 
     
     
