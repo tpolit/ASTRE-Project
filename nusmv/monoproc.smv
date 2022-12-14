@@ -4,13 +4,13 @@
 
 MODULE Arbitre(req_L1)
 VAR 
-    arb_gnt: {none, mem, cache};
+    arb_gnt: {none, mem, 1};
 ASSIGN
     init(arb_gnt) := none ;-- personne au depart
     next(arb_gnt) :=
         case 
-            req_L1 = TRUE & arb_gnt = none : cache;
-            req_L1 = TRUE & arb_gnt = cache : mem;
+            req_L1 = TRUE & arb_gnt = none : 1;
+            req_L1 = TRUE & arb_gnt = 1 : mem;
             req_L1 = TRUE & arb_gnt = mem : mem;
             TRUE : none;
         esac;
@@ -37,7 +37,7 @@ VAR
 ASSIGN
     init(req_L1) := FALSE;
 
-    init(ad) := vide ;
+    init(ad) := none ;
     init(dt) := null ;
 
     init(req_ad) := none;
@@ -191,6 +191,7 @@ ASSIGN
     next(registre) :=
         case
             ack_ctrl = rd : ack_dt;
+            TRUE : registre;
         esac;
 
     next(state) :=
@@ -214,7 +215,7 @@ ASSIGN
     next(req_l1_dt) :=
         case 
             req_l1_ctrl = wr : {0,1};
-            TRUE : none;
+            TRUE : null;
         esac;
 
 
@@ -232,27 +233,27 @@ VAR
     B_AD: {none, 0, 1};
     B_DT: {null, 0, 1};
     B_CTRL: {none, rd, wr} ;
-    c : Cache(arb_gnt, bus_ad, bus_dt, bus_ctrl, p.req_l1_ad, p.req_l1_dt, p1.req_l1_ctrl);
+    c : Cache(ARB.arb_gnt, B_AD, B_DT, B_CTRL, p.req_l1_ad, p.req_l1_dt, p.req_l1_ctrl);
     p : Cpu(c.ack_ad, c.ack_dt, c.ack_ctrl);    
-    MEM: Mem(B_AD, B_DT, B_CTRL);
-    ARB: Arbitre(CACHE.req_L1);
+    MEM: Mem(ARB.arb_gnt, B_AD, B_DT, B_CTRL);
+    ARB: Arbitre(c.req_L1);
 
 ASSIGN
     next(B_AD) := 
         case
-            ARB.arb_gnt = cache : CACHE.req_ad;
+            ARB.arb_gnt = 1 : c.req_ad;
             ARB.arb_gnt = mem : MEM.ack_ad;
             TRUE : none;
         esac;
     next(B_DT) :=
         case
-            ARB.arb_gnt = cache : CACHE.req_dt;
+            ARB.arb_gnt = 1 : c.req_dt;
             ARB.arb_gnt = mem : MEM.ack_dt;
-            TRUE : none;
+            TRUE : null;
         esac;
     next(B_CTRL) := 
         case
-            ARB.arb_gnt = cache : CACHE.req_ctrl;
+            ARB.arb_gnt = 1 : c.req_ctrl;
             ARB.arb_gnt = mem : MEM.ack_ctrl;
             TRUE : none;
         esac;
@@ -261,3 +262,5 @@ ASSIGN
     
 --END main
 --*****************************************************************************
+
+SPEC AG ((p.req_l1_ctrl = rd) -> (ARB.arb_gnt = 1))
