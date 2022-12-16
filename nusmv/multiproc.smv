@@ -1,0 +1,317 @@
+
+--END Bus
+--*****************************************************************************
+
+MODULE Arbitre(req_L1_1, req_L1_2, req_L1_3, ack_mem)
+VAR 
+    arb_gnt: {none, mem, 1, 2 ,3};
+ASSIGN
+    init(arb_gnt) := none ;-- personne au depart
+    next(arb_gnt) :=
+        case 
+            ack_mem = TRUE : none;            
+            req_L1_1  = TRUE & arb_gnt = none : 1;
+            req_L1_1 = TRUE & (arb_gnt = 1 | arb_gnt = mem) : mem;
+            req_L1_2 = TRUE & arb_gnt = none : 2;
+            req_L1_2 = TRUE & (arb_gnt = 2 | arb_gnt = mem) : mem;
+            req_L1_3 = TRUE & arb_gnt = none : 3;
+            req_L1_3 = TRUE & (arb_gnt = 3 | arb_gnt = mem) : mem; 
+            TRUE : none;
+        esac;
+        
+
+--END Arbitre
+--*****************************************************************************
+
+MODULE Cache(arb_gnt, b_out_ad, b_out_dt, b_out_ctrl, cpu_ad, cpu_dt, cpu_ctrl, VALID, id_processor)
+VAR
+    req_L1: boolean;
+    freeze_cpu: boolean;
+
+    ad: {none, 0, 1};
+    dt: {null, 0, 1};
+    
+    req_ad: {none, 0, 1};
+    req_dt: {null, 0, 1};
+    req_ctrl: {none, rd, wr};
+
+    ack_ad : {none,0,1};
+    ack_dt : {null,0,1};
+    ack_ctrl : {none,rd,wr};
+
+ASSIGN
+    init(req_L1) := FALSE;
+    init(freeze_cpu) := FALSE;
+
+    init(ad) := none ;
+    init(dt) := null ;
+
+    init(req_ad) := none;
+    init(req_dt) := null;
+    init(req_ctrl) := none;
+    
+    init(ack_ad) := none;
+    init(ack_dt) := null;
+    init(ack_ctrl) := none;
+
+    next(dt) :=
+        case
+            ((cpu_ctrl = wr) & (ad = cpu_ad)) & (dt != cpu_dt) : cpu_dt;
+            (b_out_ctrl = rd) & (b_out_dt != dt) & VALID = TRUE : b_out_dt;
+            -- Si WR de la mémoire le cache ne rapatrie pas la donnée
+            TRUE : dt ;
+        esac;
+
+
+    next(ad) :=
+        case
+            (b_out_ctrl = rd) & (b_out_ad != ad) & VALID = TRUE: b_out_ad ;
+            TRUE : ad ;
+        esac;
+   
+
+    next(ack_dt) :=
+        case 
+            (cpu_ctrl = rd)  & (cpu_ad = ad) : dt;
+            (cpu_ctrl = wr)  & (cpu_ad = ad) : cpu_dt; 
+            VALID = TRUE & b_out_ctrl = rd : b_out_dt;
+            TRUE : null;
+        esac ; 
+
+    next(ack_ad) := 
+        case
+            (cpu_ctrl = rd) & (ad = cpu_ad) : ad;
+            (cpu_ctrl = wr) & (ad = cpu_ad) : cpu_ad;
+            VALID = TRUE & b_out_ctrl = rd : b_out_ad;
+            TRUE : none;
+        esac; 
+
+    next(ack_ctrl) :=
+        case
+            (cpu_ctrl = rd) & (ad = cpu_ad) & (ad != none): rd;
+            VALID = TRUE & b_out_ctrl = rd : b_out_ctrl;
+            TRUE : none;
+        esac;
+
+    
+    next(req_ad) :=
+        case    
+            arb_gnt = id_processor : none;
+            (cpu_ctrl = rd) & (cpu_ad != ad) :  cpu_ad;
+            (cpu_ctrl = wr ): cpu_ad;
+            TRUE : none;
+        esac;
+
+    next(req_dt) :=
+        case
+            arb_gnt = id_processor : null;
+            (cpu_ctrl = wr) &  (arb_gnt = id_processor) : cpu_dt;
+            TRUE : null;
+        esac;
+
+    next(req_ctrl):=
+        case
+            arb_gnt = id_processor : none;
+            (cpu_ctrl = rd) : rd; 
+            (cpu_ctrl = wr) : wr;
+            TRUE : req_ctrl;
+        esac;
+            
+    
+    next(req_L1) :=
+        case
+            (cpu_ctrl = rd) & (cpu_ad != ad) : TRUE;
+            (cpu_ctrl = wr) : TRUE;
+            req_L1 = TRUE & arb_gnt = id_processor : FALSE;
+            TRUE : FALSE;
+        esac;
+    
+    next(freeze_cpu) :=
+        case
+            freeze_cpu = TRUE & arb_gnt = mem: TRUE;
+            cpu_ctrl = rd & ad != cpu_ad: TRUE;
+            cpu_ctrl = wr & ad != cpu_ad : TRUE;
+            freeze_cpu = TRUE & arb_gnt != mem: FALSE;
+            TRUE : FALSE;
+        esac;
+
+
+
+--END Cache
+--*****************************************************************************
+
+MODULE Mem(arb_gnt, b_out_ad, b_out_dt, b_out_ctrl)
+VAR 
+    -- data[0] = valeur à l'adresse 0
+    -- data[1] = valeur à l'adresse 1
+    data: array 0..1 of {null, 0, 1} ;
+    ack_ad: {none, 0, 1} ;
+    ack_dt: {null, 0, 1} ; 
+    ack_ctrl: {none, rd, wr} ;
+    ack_mem: boolean;
+
+ASSIGN
+    init(data[0]) := 0;
+    init(data[1]) := 0;
+    init(ack_ad) := none;
+    init(ack_dt) := null;
+    init(ack_ctrl) := none;
+
+    next(data[0]) := 
+        case 
+            b_out_ctrl = wr & b_out_ad = 0 : b_out_dt ; -- mise a jour pour une ecriture
+            TRUE : data[0]; -- rien a faire pour un read
+        esac;
+    next(data[1]) := 
+        case 
+            b_out_ctrl = wr & b_out_ad = 1 : b_out_dt ;-- mise a jour pour une ecriture
+            TRUE : data[1] ;-- rien a faire pour un read
+        esac;
+    next(ack_ad) := 
+        case 
+            arb_gnt != mem : none;
+            b_out_ad != none : b_out_ad;
+            TRUE : none;
+        esac;
+    next(ack_dt) :=
+        case
+            arb_gnt != mem : null;
+            b_out_ctrl = rd & b_out_ad = 0 : data[0];
+            b_out_ctrl = rd & b_out_ad = 1 : data[1];
+            TRUE : null;
+        esac;
+    next(ack_ctrl) :=
+        case
+            arb_gnt != mem : none;
+            b_out_ctrl != none : b_out_ctrl;
+            TRUE : none;
+        esac;
+    next(ack_mem) := 
+        case
+            arb_gnt = mem & b_out_ctrl != none : TRUE;
+            TRUE: FALSE;
+        esac;
+
+--END Mem
+--*****************************************************************************
+
+MODULE Cpu(ack_ad, ack_dt, ack_ctrl, freeze_cpu)
+VAR 
+    
+    registre : {null, 0 ,1};
+    state : {idle, freeze};
+    req_l1_ad : {none,0,1};
+    req_l1_dt : {null,0,1};
+    req_l1_ctrl : {none,rd,wr};
+    id : {1,2,3};
+
+ASSIGN
+
+    init(registre) := 0;
+    init(state) := idle;
+    init(req_l1_ad) := none;
+    init(req_l1_ctrl) := none;
+    init(req_l1_dt ) := null;
+
+
+    next(registre) :=
+        case
+            ack_ctrl = rd : ack_dt;
+            TRUE : registre;
+        esac;
+
+    next(state) :=
+        case 
+            freeze_cpu = TRUE : freeze;
+            TRUE : idle;
+        esac;
+    
+    next(req_l1_ctrl) := 
+        case 
+            state = freeze : none;
+            req_l1_ctrl != ack_ctrl : req_l1_ctrl;
+            TRUE : {none,rd,wr};
+        esac;
+
+    next(req_l1_ad) := 
+        case 
+            state = freeze : none;
+            req_l1_ctrl != none : {0,1}; 
+            TRUE : {0, 1};
+        esac;
+    
+    next(req_l1_dt) :=
+        case 
+            state = freeze : null;
+            req_l1_ctrl = wr : registre;
+            TRUE : registre;
+        esac;
+
+
+--END Cpu
+--*****************************************************************************
+
+
+MODULE main
+VAR 
+    B_AD: {none, 0, 1};
+    B_DT: {null, 0, 1};
+    B_CTRL: {none, rd, wr} ;
+    c1 : Cache(ARB.arb_gnt, B_AD, B_DT, B_CTRL, p1.req_l1_ad, p1.req_l1_dt, p1.req_l1_ctrl, VALID, 1);
+    c2 : Cache(ARB.arb_gnt, B_AD, B_DT, B_CTRL, p2.req_l1_ad, p2.req_l1_dt, p2.req_l1_ctrl, VALID, 2);
+    c3 : Cache(ARB.arb_gnt, B_AD, B_DT, B_CTRL, p3.req_l1_ad, p3.req_l1_dt, p3.req_l1_ctrl, VALID, 3);
+    p1 : Cpu(c1.ack_ad, c1.ack_dt, c1.ack_ctrl, c1.freeze_cpu); 
+    p2:  Cpu(c2.ack_ad, c2.ack_dt, c2.ack_ctrl, c2.freeze_cpu); 
+    p3 : Cpu(c3.ack_ad, c3.ack_dt, c3.ack_ctrl, c3.freeze_cpu); 
+    MEM: Mem(ARB.arb_gnt, B_AD, B_DT, B_CTRL);
+    ARB: Arbitre(c1.req_L1,c2.req_L1,c3.req_L1,MEM.ack_mem);
+    VALID: boolean;
+   
+ASSIGN
+
+    init(B_AD) := none;
+    init(B_DT) := null;
+    init(B_CTRL):= none;
+    init(VALID) := FALSE;
+
+    next(B_AD) := 
+        case
+            VALID = FALSE : none;
+            ARB.arb_gnt = 1 : c1.req_ad;
+            ARB.arb_gnt = 2 : c2.req_ad;
+            ARB.arb_gnt = 3 : c3.req_ad;
+            ARB.arb_gnt = mem & VALID = TRUE: MEM.ack_ad;
+            TRUE : B_AD;
+        esac;
+    next(B_DT) :=
+        case
+            VALID = FALSE : null;
+            ARB.arb_gnt = 1 : c1.req_dt;
+            ARB.arb_gnt = 2 : c2.req_dt;
+            ARB.arb_gnt = 3 : c3.req_dt;
+            ARB.arb_gnt = mem & VALID = TRUE: MEM.ack_dt;
+            TRUE : B_DT;
+        esac;
+    next(B_CTRL) := 
+        case
+            VALID = FALSE : none;
+            ARB.arb_gnt = 1 : c1.req_ctrl;
+            ARB.arb_gnt = 2 : c2.req_ctrl;
+            ARB.arb_gnt = 3 : c3.req_ctrl;
+            ARB.arb_gnt = mem & VALID = TRUE: MEM.ack_ctrl;
+            TRUE : B_CTRL;
+        esac;
+    next(VALID) := 
+        case
+            ARB.arb_gnt = 1 | ARB.arb_gnt = 2 | ARB.arb_gnt = 3 : FALSE;
+            ARB.arb_gnt = mem : TRUE;
+            ARB.arb_gnt = none & c1.req_L1 = TRUE : TRUE;
+            TRUE : FALSE;
+        esac;
+    
+    
+--END main
+--*****************************************************************************
+
+
+SPEC AG EF (ARB.arb_gnt = 1 )

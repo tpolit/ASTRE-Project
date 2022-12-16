@@ -11,8 +11,7 @@ ASSIGN
         case 
             ack_mem = TRUE : none;
             req_L1 = TRUE & arb_gnt = none : 1;
-            req_L1 = TRUE & arb_gnt = 1 : mem;
-            req_L1 = TRUE & arb_gnt = mem : mem;
+            req_L1 = TRUE & (arb_gnt = 1 | arb_gnt = mem) : mem;
             TRUE : none;
         esac;
         
@@ -300,12 +299,43 @@ ASSIGN
 --END main
 --*****************************************************************************
 
+
+SPEC AG EF (ARB.arb_gnt = 1)
+
+-- Pour toute les exécutions possible, il existe un chemin tel que le processeur finit par accéder au BUS.
+
+SPEC AG EF(ARB.arb_gnt = mem)
+
+-- Pour toute les exécutions possible, il existe un chemin tel que la mémoire finit par accéder à la mémoire.
+
+SPEC AG !(c.freeze_cpu = TRUE & AX(p.state = idle))
+
+
+-- Pour toutes les exécutions possible si le cache freeze CPU, alors le CPU n'est jamais IDLE au cycle suivant.
+
+
 SPEC AG EF((p.req_l1_ctrl = rd) ->  (ARB.arb_gnt = 1))
+
+-- Si le processeur veut faire une lecture sur une donnée il finit poar accéder au moins une fois au BUS. Par la suitele cache peut lui retourner la donnée,
+-- donc il n'a pas besoin d'accéder au BUS.
 
 SPEC AG AF((p.req_l1_ctrl = wr) -> (ARB.arb_gnt = 1))
 
--- Si le processeur demmande à fair une lecture, il finit par avoir accès aux bus
+-- Si le processeur demmande à faire une lecture, il finit toujours par avoir accès aux bus
 
 SPEC AG AF(((p.req_l1_ctrl = wr) & (p.req_l1_ad = 0) & (p.req_l1_dt = 1) )  <-> (MEM.data[0] = 1))
 
+-- On a infiniment souvent que le mot à l'adresse 0 de la mémoire vaut 1 si et seulement si le processeur demande à faire une écriture à l'adresse 0 avec la valeur1
+
+
 SPEC AG AF ( ((p.req_l1_ctrl = rd) & (p.req_l1_ad = 0) & (MEM.data[0] = 1 ) ) -> (p.registre = 1))
+
+-- On a infinement souvent que si le processeur lit à l'adresse 0 et que la valeur est 1 alors le registre contient la valeur 1
+
+SPEC AG EF(c.dt = MEM.data[0] | c.dt = MEM.data[1])
+
+-- Le cache est cohérent avec la mémoire : la donnée en mémoire est rapatriée dans le cache
+
+SPEC AG EF(p.registre = c.dt & c.ad != none )
+
+--  Dans tous les états, il existe une exécutil tel que la donnée stockée dans le registre est égale à celle du cache et l'adresse n'est pas nulle
